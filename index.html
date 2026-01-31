@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recruitment System - Find Your Dream Job</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-logo">
+                    <i class="fas fa-briefcase"></i>
+                    <span>RecruitHub</span>
+                </div>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="#home" class="nav-link">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#jobs" class="nav-link">Jobs</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#about" class="nav-link">About</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#contact" class="nav-link">Contact</a>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-primary" onclick="showLoginModal()">Login</button>
+                    </li>
+                </ul>
+                <div class="hamburger">
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1>Find Your Dream Job</h1>
+            <p>Connect with top companies and take your career to the next level</p>
+            <div class="search-container">
+                <div class="search-box">
+                    <div class="search-input-group">
+                        <input type="text" id="jobSearch" placeholder="Job title, keywords, or company" data-component-name="<input />">
+                        <input type="text" id="locationSearch" placeholder="Location" data-component-name="<input />">
+                    </div>
+                    <button class="search-button" onclick="searchJobs()" data-component-name="<button />">
+                        <i class="fas fa-search"></i> Search Jobs
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Job Listings Section -->
+    <section id="jobs" class="jobs-section">
+        <div class="container">
+            <h2 class="section-title">Featured Jobs</h2>
+            <div class="filter-container">
+                <select id="categoryFilter" onchange="filterJobs()">
+                    <option value="">All Categories</option>
+                    <option value="technology">Technology</option>
+                    <option value="marketing">Marketing</option>
+                    <option value="sales">Sales</option>
+                    <option value="finance">Finance</option>
+                    <option value="healthcare">Healthcare</option>
+                </select>
+                <select id="typeFilter" onchange="filterJobs()">
+                    <option value="">All Types</option>
+                    <option value="full-time">Full Time</option>
+                    <option value="part-time">Part Time</option>
+                    <option value="remote">Remote</option>
+                    <option value="contract">Contract</option>
+                </select>
+            </div>
+            <div class="job-grid" id="jobGrid">
+                <!-- Jobs will be dynamically loaded here -->
+            </div>
+            <div class="load-more-container">
+                <button class="btn btn-secondary" onclick="loadMoreJobs()">Load More Jobs</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about-section">
+        <div class="container">
+            <h2 class="section-title">About RecruitHub</h2>
+            <div class="about-content">
+                <div class="about-text">
+                    <h3>Connecting Talent with Opportunity</h3>
+                    <p>RecruitHub is a modern recruitment platform designed to bridge the gap between talented professionals and leading companies. We leverage cutting-edge technology to make the job search process efficient, transparent, and rewarding.</p>
+                    <div class="stats">
+                        <div class="stat">
+                            <h4>10,000+</h4>
+                            <p>Active Jobs</p>
+                        </div>
+                        <div class="stat">
+                            <h4>5,000+</h4>
+                            <p>Companies</p>
+                        </div>
+                        <div class="stat">
+                            <h4>50,000+</h4>
+                            <p>Job Seekers</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="about-image">
+                    <i class="fas fa-users"></i>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact-section">
+        <div class="container">
+            <h2 class="section-title">Get in Touch</h2>
+            <div class="contact-content">
+                <div class="contact-info">
+                    <h3>Contact Information</h3>
+                    <div class="contact-item">
+                        <i class="fas fa-envelope"></i>
+                        <span>info@recruithub.com</span>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-phone"></i>
+                        <span>+1 (555) 123-4567</span>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>123 Business Ave, Suite 100, New York, NY 10001</span>
+                    </div>
+                </div>
+                <form class="contact-form" onsubmit="handleContactSubmit(event)">
+                    <div class="form-group">
+                        <input type="text" id="contactName" placeholder="Your Name" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="email" id="contactEmail" placeholder="Your Email" required>
+                    </div>
+                    <div class="form-group">
+                        <textarea id="contactMessage" placeholder="Your Message" rows="5" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Send Message</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>RecruitHub</h4>
+                    <p>Your trusted partner in finding the perfect career opportunity.</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="#home">Home</a></li>
+                        <li><a href="#jobs">Jobs</a></li>
+                        <li><a href="#about">About</a></li>
+                        <li><a href="#contact">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>For Job Seekers</h4>
+                    <ul>
+                        <li><a href="#">Browse Jobs</a></li>
+                        <li><a href="#">Career Advice</a></li>
+                        <li><a href="#">Resume Builder</a></li>
+                        <li><a href="#">Job Alerts</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>For Employers</h4>
+                    <ul>
+                        <li><a href="#">Post a Job</a></li>
+                        <li><a href="#">Browse Candidates</a></li>
+                        <li><a href="#">Pricing</a></li>
+                        <li><a href="#">Resources</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 RecruitHub. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('loginModal')">&times;</span>
+            <h2>Login to Your Account</h2>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <input type="email" id="loginEmail" placeholder="Email Address" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="loginPassword" placeholder="Password" required>
+                </div>
+                <div class="form-options">
+                    <label class="checkbox">
+                        <input type="checkbox"> Remember me
+                    </label>
+                    <a href="#" class="forgot-password">Forgot Password?</a>
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Login</button>
+                <div class="signup-link">
+                    <p>Don't have an account? <a href="#" onclick="showSignupModal()">Sign up</a></p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Job Application Modal -->
+    <div id="applicationModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('applicationModal')">&times;</span>
+            <h2>Apply for Position</h2>
+            <form onsubmit="handleApplication(event)">
+                <div class="form-group">
+                    <input type="text" id="applicantName" placeholder="Full Name" required>
+                </div>
+                <div class="form-group">
+                    <input type="email" id="applicantEmail" placeholder="Email Address" required>
+                </div>
+                <div class="form-group">
+                    <input type="tel" id="applicantPhone" placeholder="Phone Number" required>
+                </div>
+                <div class="form-group">
+                    <textarea id="coverLetter" placeholder="Cover Letter" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="resume">Upload Resume (PDF/DOC)</label>
+                    <input type="file" id="resume" accept=".pdf,.doc,.docx" required>
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Submit Application</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
