@@ -35,6 +35,58 @@ Recruitment-System/
 └── recruitment.db        # SQLite database (auto-generated)
 ```
 
+## Quick Start (Development)
+
+### 🚀 Run the System (2 Servers Required)
+
+**Step 1: Stop any existing servers**
+```bash
+lsof -ti:5001,8000 | xargs kill -9
+```
+
+**Step 2: Start Backend Server (Terminal 1)**
+```bash
+cd /Users/antoniyajency/Downloads/Recruitment-System
+python3 app.py
+```
+*Backend runs on port 5001*
+
+**Step 3: Start Frontend Server (Terminal 2)**
+```bash
+cd /Users/antoniyajency/Downloads/Recruitment-System
+python3 -m http.server 8000
+```
+*Frontend runs on port 8000*
+
+**Step 4: Access the Application**
+- **Main Website:** http://localhost:8000
+- **Admin Dashboard:** http://localhost:8000/admin.html
+- **API Endpoints:** http://localhost:5001/api
+
+### 🛑 Stop the Servers
+```bash
+lsof -ti:5001,8000 | xargs kill -9
+```
+
+### 🔄 Quick Restart Commands
+```bash
+# Kill everything
+lsof -ti:5001,8000 | xargs kill -9
+
+# Start backend
+cd /Users/antoniyajency/Downloads/Recruitment-System && python3 app.py
+
+# Start frontend (in new terminal)
+cd /Users/antoniyajency/Downloads/Recruitment-System && python3 -m http.server 8000
+```
+
+### 📱 Test the System
+1. Visit http://localhost:8000
+2. Browse job listings
+3. Click "Apply Now" on any job
+4. Fill out the form and upload a PDF resume
+5. Submit - should save to database!
+
 ## Installation & Setup
 
 ### Prerequisites
@@ -128,6 +180,32 @@ The application will be available at:
 - `size` - Company size (Small, Medium, Large)
 - `logo_url` - Company logo URL
 - `created_at` - Creation timestamp
+
+## Command Reference
+
+### Server Management
+| Command | Purpose |
+|---------|---------|
+| `lsof -ti:5001,8000 \| xargs kill -9` | Stop both servers |
+| `lsof -ti:5001 \| xargs kill -9` | Stop backend only |
+| `lsof -ti:8000 \| xargs kill -9` | Stop frontend only |
+| `python3 app.py` | Start backend (port 5001) |
+| `python3 -m http.server 8000` | Start frontend (port 8000) |
+
+### Database Management
+| Command | Purpose |
+|---------|---------|
+| `python3 migrate.py create` | Create database tables |
+| `python3 migrate.py seed` | Add sample data |
+| `python3 migrate.py reset` | Reset database |
+| `python3 migrate.py status` | Check database status |
+
+### Testing
+| Command | Purpose |
+|---------|---------|
+| `curl http://localhost:5001/api/jobs` | Test backend API |
+| `curl http://localhost:8000` | Test frontend |
+| `python3 -c "import sqlite3; conn=sqlite3.connect('instance/recruitment.db'); print(conn.execute('SELECT COUNT(*) FROM application').fetchone())"` | Check applications in database |
 
 ## Usage Examples
 
