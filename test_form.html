@@ -65,7 +65,7 @@
             formData.append('resume', document.getElementById('resume').files[0]);
             
             try {
-                const response = await fetch('/api/applications', {
+                const response = await fetch('http://localhost:5001/api/applications', {
                     method: 'POST',
                     body: formData
                 });

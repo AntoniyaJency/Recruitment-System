@@ -71,6 +71,9 @@ const jobData = [
 let currentJobs = [...jobData];
 let displayedJobs = 6;
 
+// API Base URL
+const API_BASE_URL = 'http://localhost:5001/api';
+
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
     loadJobsFromAPI();
@@ -80,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Load jobs from API
 async function loadJobsFromAPI() {
     try {
-        const response = await fetch('/api/jobs');
+        const response = await fetch(`${API_BASE_URL}/jobs`);
         if (response.ok) {
             const data = await response.json();
             currentJobs = data.jobs;
@@ -191,7 +194,7 @@ async function searchJobs() {
         if (categoryFilter) params.append('category', categoryFilter);
         if (typeFilter) params.append('type', typeFilter);
         
-        const response = await fetch(`/api/jobs?${params.toString()}`);
+        const response = await fetch(`${API_BASE_URL}/jobs?${params.toString()}`);
         if (response.ok) {
             const data = await response.json();
             currentJobs = data.jobs;
@@ -311,7 +314,7 @@ async function handleApplication(event) {
             formData.append('resume', resume);
             
             // Send to backend API
-            const response = await fetch('/api/applications', {
+            const response = await fetch(`${API_BASE_URL}/applications`, {
                 method: 'POST',
                 body: formData
             });
