@@ -73,9 +73,29 @@ let displayedJobs = 6;
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
-    renderJobs(currentJobs.slice(0, displayedJobs));
+    loadJobsFromAPI();
     setupEventListeners();
 });
+
+// Load jobs from API
+async function loadJobsFromAPI() {
+    try {
+        const response = await fetch('/api/jobs');
+        if (response.ok) {
+            const data = await response.json();
+            currentJobs = data.jobs;
+            renderJobs(currentJobs.slice(0, displayedJobs));
+        } else {
+            console.error('Failed to load jobs from API');
+            // Fallback to mock data
+            renderJobs(jobData.slice(0, displayedJobs));
+        }
+    } catch (error) {
+        console.error('Error loading jobs:', error);
+        // Fallback to mock data
+        renderJobs(jobData.slice(0, displayedJobs));
+    }
+}
 
 // Setup event listeners
 function setupEventListeners() {
@@ -157,38 +177,39 @@ function formatJobType(type) {
 }
 
 // Search jobs
-function searchJobs() {
+async function searchJobs() {
     const searchTerm = document.getElementById('jobSearch').value.toLowerCase();
     const locationTerm = document.getElementById('locationSearch').value.toLowerCase();
     const categoryFilter = document.getElementById('categoryFilter').value;
     const typeFilter = document.getElementById('typeFilter').value;
     
-    let filteredJobs = jobData.filter(job => {
-        const matchesSearch = !searchTerm || 
-            job.title.toLowerCase().includes(searchTerm) ||
-            job.company.toLowerCase().includes(searchTerm) ||
-            job.description.toLowerCase().includes(searchTerm) ||
-            job.tags.some(tag => tag.toLowerCase().includes(searchTerm));
+    try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (searchTerm) params.append('search', searchTerm);
+        if (locationTerm) params.append('location', locationTerm);
+        if (categoryFilter) params.append('category', categoryFilter);
+        if (typeFilter) params.append('type', typeFilter);
         
-        const matchesLocation = !locationTerm || 
-            job.location.toLowerCase().includes(locationTerm);
-        
-        const matchesCategory = !categoryFilter || job.category === categoryFilter;
-        const matchesType = !typeFilter || job.type === typeFilter;
-        
-        return matchesSearch && matchesLocation && matchesCategory && matchesType;
-    });
-    
-    currentJobs = filteredJobs;
-    displayedJobs = 6;
-    renderJobs(currentJobs.slice(0, displayedJobs));
-    
-    // Hide load more button if all jobs are displayed
-    const loadMoreBtn = document.querySelector('.load-more-container');
-    if (currentJobs.length <= displayedJobs) {
-        loadMoreBtn.style.display = 'none';
-    } else {
-        loadMoreBtn.style.display = 'block';
+        const response = await fetch(`/api/jobs?${params.toString()}`);
+        if (response.ok) {
+            const data = await response.json();
+            currentJobs = data.jobs;
+            displayedJobs = 6;
+            renderJobs(currentJobs.slice(0, displayedJobs));
+            
+            // Hide load more button if all jobs are displayed
+            const loadMoreBtn = document.querySelector('.load-more-container');
+            if (currentJobs.length <= displayedJobs) {
+                loadMoreBtn.style.display = 'none';
+            } else {
+                loadMoreBtn.style.display = 'block';
+            }
+        } else {
+            console.error('Search failed');
+        }
+    } catch (error) {
+        console.error('Search error:', error);
     }
 }
 
@@ -266,7 +287,7 @@ function handleLogin(event) {
 }
 
 // Handle application form submission
-function handleApplication(event) {
+async function handleApplication(event) {
     event.preventDefault();
     
     const name = document.getElementById('applicantName').value;
@@ -278,26 +299,45 @@ function handleApplication(event) {
     if (name && email && phone && coverLetter && resume) {
         const modal = document.getElementById('applicationModal');
         const jobId = modal.dataset.jobId;
-        const job = jobData.find(j => j.id === parseInt(jobId));
         
-        showToast(`Application submitted successfully for ${job.title}!`, 'success');
-        closeModal('applicationModal');
-        
-        // Reset form
-        document.getElementById('applicantName').value = '';
-        document.getElementById('applicantEmail').value = '';
-        document.getElementById('applicantPhone').value = '';
-        document.getElementById('coverLetter').value = '';
-        document.getElementById('resume').value = '';
-        
-        // In a real application, this would send data to a server
-        console.log('Application submitted:', {
-            jobId,
-            jobTitle: job.title,
-            company: job.company,
-            applicant: { name, email, phone, coverLetter },
-            resume: resume.name
-        });
+        try {
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('job_id', jobId);
+            formData.append('applicant_name', name);
+            formData.append('applicant_email', email);
+            formData.append('applicant_phone', phone);
+            formData.append('cover_letter', coverLetter);
+            formData.append('resume', resume);
+            
+            // Send to backend API
+            const response = await fetch('/api/applications', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                showToast(`Application submitted successfully! Application ID: ${result.id}`, 'success');
+                closeModal('applicationModal');
+                
+                // Reset form
+                document.getElementById('applicantName').value = '';
+                document.getElementById('applicantEmail').value = '';
+                document.getElementById('applicantPhone').value = '';
+                document.getElementById('coverLetter').value = '';
+                document.getElementById('resume').value = '';
+                
+                console.log('Application submitted successfully:', result);
+            } else {
+                const error = await response.json();
+                showToast(`Error: ${error.error || 'Failed to submit application'}`, 'error');
+                console.error('Application submission failed:', error);
+            }
+        } catch (error) {
+            showToast('Network error. Please try again.', 'error');
+            console.error('Network error:', error);
+        }
     } else {
         showToast('Please fill in all fields and upload your resume', 'error');
     }

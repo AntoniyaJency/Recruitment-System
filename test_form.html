@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Application Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        .result { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>Test Job Application</h1>
+    
+    <form id="applicationForm">
+        <div class="form-group">
+            <label>Job ID:</label>
+            <input type="number" id="jobId" value="1" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Name:</label>
+            <input type="text" id="name" value="Test User" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Email:</label>
+            <input type="email" id="email" value="test@example.com" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Phone:</label>
+            <input type="tel" id="phone" value="555-1234" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Cover Letter:</label>
+            <textarea id="coverLetter" rows="4" required>This is a test application from the test form.</textarea>
+        </div>
+        
+        <div class="form-group">
+            <label>Resume:</label>
+            <input type="file" id="resume" accept=".pdf,.doc,.docx" required>
+        </div>
+        
+        <button type="submit">Submit Application</button>
+    </form>
+    
+    <div id="result" class="result" style="display: none;"></div>
+    
+    <script>
+        document.getElementById('applicationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('job_id', document.getElementById('jobId').value);
+            formData.append('applicant_name', document.getElementById('name').value);
+            formData.append('applicant_email', document.getElementById('email').value);
+            formData.append('applicant_phone', document.getElementById('phone').value);
+            formData.append('cover_letter', document.getElementById('coverLetter').value);
+            formData.append('resume', document.getElementById('resume').files[0]);
+            
+            try {
+                const response = await fetch('/api/applications', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = document.getElementById('result');
+                if (response.ok) {
+                    const data = await response.json();
+                    result.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p>Application ID: ${data.id}</p>
+                        <p>Applicant: ${data.applicant_name}</p>
+                        <p>Job: ${data.job_title}</p>
+                        <p>Status: ${data.status}</p>
+                    `;
+                    result.style.borderColor = 'green';
+                } else {
+                    const error = await response.json();
+                    result.innerHTML = `
+                        <h3>❌ Error</h3>
+                        <p>${error.error || 'Unknown error'}</p>
+                    `;
+                    result.style.borderColor = 'red';
+                }
+                result.style.display = 'block';
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p>${error.message}</p>
+                `;
+                document.getElementById('result').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

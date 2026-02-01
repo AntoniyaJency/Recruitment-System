@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime
 import os
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -251,16 +252,38 @@ def get_applications():
 @app.route('/api/applications', methods=['POST'])
 def create_application():
     try:
-        data = request.get_json()
-        
-        application = Application(
-            job_id=data['job_id'],
-            applicant_name=data['applicant_name'],
-            applicant_email=data['applicant_email'],
-            applicant_phone=data['applicant_phone'],
-            cover_letter=data['cover_letter'],
-            resume_filename=data['resume_filename']
-        )
+        # Check if form data (file upload) or JSON
+        if request.files:
+            # Handle file upload
+            resume = request.files.get('resume')
+            if not resume:
+                return jsonify({'error': 'Resume file is required'}), 400
+            
+            # Save resume file
+            filename = f"{int(time.time())}_{resume.filename}"
+            resume_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            resume.save(resume_path)
+            
+            # Get form data
+            application = Application(
+                job_id=int(request.form.get('job_id')),
+                applicant_name=request.form.get('applicant_name'),
+                applicant_email=request.form.get('applicant_email'),
+                applicant_phone=request.form.get('applicant_phone'),
+                cover_letter=request.form.get('cover_letter'),
+                resume_filename=filename
+            )
+        else:
+            # Handle JSON data (for testing)
+            data = request.get_json()
+            application = Application(
+                job_id=data['job_id'],
+                applicant_name=data['applicant_name'],
+                applicant_email=data['applicant_email'],
+                applicant_phone=data['applicant_phone'],
+                cover_letter=data['cover_letter'],
+                resume_filename=data['resume_filename']
+            )
         
         db.session.add(application)
         db.session.commit()
