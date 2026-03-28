@@ -8,14 +8,29 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from sqlalchemy import inspect, text
+
 from app import app, db, Job, Company
 from datetime import datetime
+
+def ensure_application_admin_notes():
+    """Add admin_notes column to application if missing (SQLite)."""
+    with app.app_context():
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        if 'application' in tables:
+            cols = {c['name'] for c in inspector.get_columns('application')}
+            if 'admin_notes' not in cols:
+                db.session.execute(text('ALTER TABLE application ADD COLUMN admin_notes TEXT'))
+                db.session.commit()
+                print("Added column application.admin_notes")
 
 def create_tables():
     """Create all database tables."""
     with app.app_context():
         print("Creating database tables...")
         db.create_all()
+        ensure_application_admin_notes()
         print("Tables created successfully!")
 
 def seed_data():

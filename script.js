@@ -70,33 +70,270 @@ const jobData = [
 
 let currentJobs = [...jobData];
 let displayedJobs = 6;
+let jobsTotalFromApi = jobData.length;
+let sortMode = 'newest';
+const SAVED_JOBS_KEY = 'recruithub_saved_job_ids';
+const USER_SESSION_KEY = 'recruithub_user';
+const JOB_ALERTS_KEY = 'recruithub_job_alerts';
 
-// API Base URL
-const API_BASE_URL = 'http://localhost:5001/api';
+function getApiBaseUrl() {
+    if (window.location.protocol === 'file:') {
+        return 'http://localhost:5001/api';
+    }
+    if (window.location.port === '5001') {
+        return `${window.location.origin}/api`;
+    }
+    return 'http://localhost:5001/api';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+function getJobType(job) {
+    return job.job_type || job.type || '';
+}
+
+function getSavedJobIds() {
+    try {
+        const raw = localStorage.getItem(SAVED_JOBS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr.map(Number).filter(Boolean) : [];
+    } catch {
+        return [];
+    }
+}
+
+function setSavedJobIds(ids) {
+    localStorage.setItem(SAVED_JOBS_KEY, JSON.stringify(ids));
+}
+
+function isJobSaved(jobId) {
+    return getSavedJobIds().includes(Number(jobId));
+}
+
+function toggleSaveJob(event, jobId) {
+    event.stopPropagation();
+    const id = Number(jobId);
+    let ids = getSavedJobIds();
+    if (ids.includes(id)) {
+        ids = ids.filter(x => x !== id);
+        showToast('Removed from saved jobs', 'info');
+    } else {
+        ids.push(id);
+        showToast('Job saved', 'success');
+    }
+    setSavedJobIds(ids);
+    renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+    renderSavedJobs();
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function scrollToSaved(e) {
+    e.preventDefault();
+    const el = document.getElementById('saved-jobs');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    renderSavedJobs();
+}
+
+function renderSavedJobs() {
+    const list = document.getElementById('savedJobsList');
+    const hint = document.getElementById('savedJobsHint');
+    if (!list || !hint) return;
+    const ids = getSavedJobIds();
+    if (!ids.length) {
+        hint.style.display = '';
+        list.innerHTML = '';
+        return;
+    }
+    hint.style.display = 'none';
+    const byId = new Map(currentJobs.map(j => [j.id, j]));
+    list.innerHTML = ids.map(id => {
+        const j = byId.get(id);
+        if (!j) {
+            return `<span class="saved-job-missing">Job #${id} is no longer listed</span>`;
+        }
+        return `<button type="button" class="saved-job-chip" onclick="showJobDetails(${j.id})">${escapeHtml(j.title)} · ${escapeHtml(j.company)}</button>`;
+    }).join('');
+}
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
+    const y = document.getElementById('footerYear');
+    if (y) y.textContent = String(new Date().getFullYear());
+    restoreSession();
+    refreshAlertsSummary();
     loadJobsFromAPI();
     setupEventListeners();
+    loadAboutStats();
 });
+
+async function loadAboutStats() {
+    try {
+        const r = await fetch(`${API_BASE_URL}/dashboard/stats`);
+        if (!r.ok) return;
+        const s = await r.json();
+        const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = v ?? '—';
+        };
+        set('statPublicJobs', s.active_jobs);
+        set('statPublicCompanies', s.active_companies);
+        set('statPublicApps', s.total_applications);
+    } catch (e) {
+        console.warn('About stats unavailable', e);
+    }
+}
+
+function applyJobSort(jobs) {
+    const arr = [...jobs];
+    if (sortMode === 'title') {
+        arr.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+    } else if (sortMode === 'company') {
+        arr.sort((a, b) => (a.company || '').localeCompare(b.company || '', undefined, { sensitivity: 'base' }));
+    } else {
+        arr.sort((a, b) => {
+            const ta = new Date(a.created_at || 0).getTime();
+            const tb = new Date(b.created_at || 0).getTime();
+            return tb - ta;
+        });
+    }
+    return arr;
+}
+
+function onSortChange() {
+    const sel = document.getElementById('sortJobs');
+    sortMode = sel ? sel.value : 'newest';
+    renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+    updateLoadMoreVisibility();
+    updateResultsMeta();
+}
+
+function updateResultsMeta() {
+    const el = document.getElementById('jobResultsMeta');
+    if (!el) return;
+    const total = currentJobs.length;
+    const shown = Math.min(displayedJobs, total);
+    if (total === 0) {
+        el.textContent = 'No roles match your filters right now.';
+        return;
+    }
+    el.textContent = `Showing ${shown} of ${total} open roles`;
+}
+
+function updateLoadMoreVisibility() {
+    const loadMoreBtn = document.querySelector('.load-more-container');
+    if (!loadMoreBtn) return;
+    loadMoreBtn.style.display = currentJobs.length > displayedJobs ? 'block' : 'none';
+}
+
+function clearJobFilters() {
+    const js = document.getElementById('jobSearch');
+    const ls = document.getElementById('locationSearch');
+    const cf = document.getElementById('categoryFilter');
+    const tf = document.getElementById('typeFilter');
+    const sr = document.getElementById('sortJobs');
+    if (js) js.value = '';
+    if (ls) ls.value = '';
+    if (cf) cf.value = '';
+    if (tf) tf.value = '';
+    if (sr) sr.value = 'newest';
+    sortMode = 'newest';
+    searchJobs();
+}
+
+async function maybeOpenJobFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    let id = params.get('job');
+    if (!id && window.location.hash && window.location.hash.startsWith('#job-')) {
+        id = window.location.hash.slice('#job-'.length);
+    }
+    if (!id) return;
+    const n = Number(id);
+    if (n) await showJobDetails(n);
+}
+
+function jobMatchesSavedAlert(job) {
+    try {
+        const raw = localStorage.getItem(JOB_ALERTS_KEY);
+        if (!raw) return false;
+        const { keywords } = JSON.parse(raw);
+        if (!keywords || !keywords.length) return false;
+        const tags = (job.tags || []).join(' ');
+        const hay = `${job.title} ${job.company} ${tags} ${job.description || ''}`.toLowerCase();
+        return keywords.some(kw => hay.includes(kw));
+    } catch {
+        return false;
+    }
+}
 
 // Load jobs from API
 async function loadJobsFromAPI() {
     try {
-        const response = await fetch(`${API_BASE_URL}/jobs`);
+        const response = await fetch(`${API_BASE_URL}/jobs?per_page=100`);
         if (response.ok) {
             const data = await response.json();
-            currentJobs = data.jobs;
-            renderJobs(currentJobs.slice(0, displayedJobs));
+            currentJobs = data.jobs || [];
+            jobsTotalFromApi = typeof data.total === 'number' ? data.total : currentJobs.length;
+            displayedJobs = currentJobs.length === 0 ? 0 : Math.min(6, currentJobs.length);
+            renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+            updateLoadMoreVisibility();
+            updateResultsMeta();
+            renderSavedJobs();
+            await populateFiltersFromAPI();
+            await maybeOpenJobFromUrl();
         } else {
             console.error('Failed to load jobs from API');
-            // Fallback to mock data
-            renderJobs(jobData.slice(0, displayedJobs));
+            currentJobs = jobData;
+            jobsTotalFromApi = jobData.length;
+            displayedJobs = Math.min(6, jobData.length);
+            renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+            updateLoadMoreVisibility();
+            updateResultsMeta();
+            renderSavedJobs();
         }
     } catch (error) {
         console.error('Error loading jobs:', error);
-        // Fallback to mock data
-        renderJobs(jobData.slice(0, displayedJobs));
+        currentJobs = jobData;
+        jobsTotalFromApi = jobData.length;
+        displayedJobs = Math.min(6, jobData.length);
+        renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+        updateLoadMoreVisibility();
+        updateResultsMeta();
+        renderSavedJobs();
+    }
+}
+
+async function populateFiltersFromAPI() {
+    try {
+        const r = await fetch(`${API_BASE_URL}/jobs/meta`);
+        if (!r.ok) return;
+        const meta = await r.json();
+        const catSel = document.getElementById('categoryFilter');
+        const typeSel = document.getElementById('typeFilter');
+        if (catSel && meta.categories && meta.categories.length) {
+            const cur = catSel.value;
+            catSel.innerHTML = '<option value="">All Categories</option>' +
+                meta.categories.map(c => `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('');
+            catSel.value = cur;
+        }
+        if (typeSel && meta.job_types && meta.job_types.length) {
+            const cur = typeSel.value;
+            typeSel.innerHTML = '<option value="">All Types</option>' +
+                meta.job_types.map(t => {
+                    const label = t.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    return `<option value="${t}">${label}</option>`;
+                }).join('');
+            typeSel.value = cur;
+        }
+    } catch (e) {
+        console.warn('Could not load filter metadata', e);
     }
 }
 
@@ -136,7 +373,29 @@ function setupEventListeners() {
     // Search functionality
     document.getElementById('jobSearch').addEventListener('input', debounce(searchJobs, 300));
     document.getElementById('locationSearch').addEventListener('input', debounce(searchJobs, 300));
+
+    document.querySelectorAll('.nav-menu .btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            hamburger.classList.remove('active');
+            navMenu.classList.remove('active');
+        });
+    });
 }
+
+window.onSortChange = onSortChange;
+window.clearJobFilters = clearJobFilters;
+window.showSignupModal = showSignupModal;
+window.logoutUser = logoutUser;
+window.goAdmin = goAdmin;
+window.openCareerAdvice = openCareerAdvice;
+window.openResumeBuilder = openResumeBuilder;
+window.openPricingModal = openPricingModal;
+window.openResourcesModal = openResourcesModal;
+window.openForgotPassword = openForgotPassword;
+window.openJobAlertsModal = openJobAlertsModal;
+window.saveJobAlert = saveJobAlert;
+window.downloadResumeTemplate = downloadResumeTemplate;
+window.socialDemo = socialDemo;
 
 // Render jobs to the page
 function renderJobs(jobs) {
@@ -147,25 +406,34 @@ function renderJobs(jobs) {
         return;
     }
     
+    const tagsList = job => (job.tags || []).map(tag => `<span class="job-tag">${escapeHtml(tag)}</span>`).join('');
+    const desc = escapeHtml((job.description || '').slice(0, 180)) + ((job.description || '').length > 180 ? '…' : '');
+
     jobGrid.innerHTML = jobs.map(job => `
-        <div class="job-card" onclick="showJobDetails(${job.id})">
+        <div class="job-card${jobMatchesSavedAlert(job) ? ' job-card-alert-match' : ''}" onclick="showJobDetails(${job.id})">
             <div class="job-header">
-                <div>
-                    <h3 class="job-title">${job.title}</h3>
-                    <p class="company-name">${job.company}</p>
+                <div class="job-header-main">
+                    <h3 class="job-title">${escapeHtml(job.title)}</h3>
+                    <p class="company-name">${escapeHtml(job.company)}</p>
                 </div>
-                <span class="job-type">${formatJobType(job.type)}</span>
+                <div class="job-header-badges">
+                    <button type="button" class="job-save ${isJobSaved(job.id) ? 'saved' : ''}" title="Save job"
+                        onclick="toggleSaveJob(event, ${job.id})" aria-label="Save job">
+                        <i class="fas fa-heart"></i>
+                    </button>
+                    <span class="job-type">${formatJobType(getJobType(job))}</span>
+                </div>
             </div>
             <div class="job-location">
                 <i class="fas fa-map-marker-alt"></i>
-                <span>${job.location}</span>
+                <span>${escapeHtml(job.location)}</span>
             </div>
-            <p class="job-description">${job.description}</p>
+            <p class="job-description">${desc}</p>
             <div class="job-tags">
-                ${job.tags.map(tag => `<span class="job-tag">${tag}</span>`).join('')}
+                ${tagsList(job)}
             </div>
             <div class="job-footer">
-                <span class="job-salary">${job.salary}</span>
+                <span class="job-salary">${escapeHtml(job.salary)}</span>
                 <button class="apply-btn" onclick="event.stopPropagation(); showApplicationModal(${job.id})">Apply Now</button>
             </div>
         </div>
@@ -174,7 +442,11 @@ function renderJobs(jobs) {
 
 // Format job type for display
 function formatJobType(type) {
-    return type.split('-').map(word => 
+    if (!type || !String(type).includes('-')) {
+        if (!type) return '';
+        return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+    return type.split('-').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
 }
@@ -197,17 +469,13 @@ async function searchJobs() {
         const response = await fetch(`${API_BASE_URL}/jobs?${params.toString()}`);
         if (response.ok) {
             const data = await response.json();
-            currentJobs = data.jobs;
-            displayedJobs = 6;
-            renderJobs(currentJobs.slice(0, displayedJobs));
-            
-            // Hide load more button if all jobs are displayed
-            const loadMoreBtn = document.querySelector('.load-more-container');
-            if (currentJobs.length <= displayedJobs) {
-                loadMoreBtn.style.display = 'none';
-            } else {
-                loadMoreBtn.style.display = 'block';
-            }
+            currentJobs = data.jobs || [];
+            jobsTotalFromApi = typeof data.total === 'number' ? data.total : currentJobs.length;
+            displayedJobs = currentJobs.length === 0 ? 0 : Math.min(6, currentJobs.length);
+            renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+            updateLoadMoreVisibility();
+            updateResultsMeta();
+            renderSavedJobs();
         } else {
             console.error('Search failed');
         }
@@ -224,20 +492,143 @@ function filterJobs() {
 // Load more jobs
 function loadMoreJobs() {
     displayedJobs += 3;
-    renderJobs(currentJobs.slice(0, displayedJobs));
-    
-    if (currentJobs.length <= displayedJobs) {
-        document.querySelector('.load-more-container').style.display = 'none';
-    }
+    renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+    updateLoadMoreVisibility();
+    updateResultsMeta();
 }
 
 // Show job details
-function showJobDetails(jobId) {
-    const job = jobData.find(j => j.id === jobId);
-    if (job) {
-        showToast(`Viewing details for ${job.title} at ${job.company}`, 'success');
-        // In a real application, this would navigate to a job details page
+async function showJobDetails(jobId) {
+    const modal = document.getElementById('jobDetailModal');
+    const body = document.getElementById('jobDetailBody');
+    if (!modal || !body) return;
+    modal.style.display = 'block';
+    body.innerHTML = '<p class="muted">Loading…</p>';
+    let job = currentJobs.find(j => j.id === jobId);
+    if (!job) {
+        try {
+            const r = await fetch(`${API_BASE_URL}/jobs/${jobId}`);
+            if (r.ok) job = await r.json();
+        } catch (e) {
+            console.error(e);
+        }
     }
+    if (!job) {
+        body.innerHTML = '<p>Job not found.</p>';
+        return;
+    }
+    const titleEl = document.getElementById('jobDetailTitle');
+    if (titleEl) titleEl.textContent = job.title;
+    const tags = (job.tags || []).map(t => `<span class="job-tag">${escapeHtml(t)}</span>`).join('');
+    const desc = escapeHtml(job.description || '').replace(/\n/g, '<br>');
+    body.innerHTML = `
+        <p class="company-name">${escapeHtml(job.company)}</p>
+        <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(job.location)}</p>
+        <p><strong>Type:</strong> ${formatJobType(getJobType(job))} &nbsp; <strong>Category:</strong> ${escapeHtml(job.category || '')}</p>
+        <p class="job-salary-inline"><strong>Salary:</strong> ${escapeHtml(job.salary || '')}</p>
+        <h4>Description</h4>
+        <p class="job-detail-description">${desc}</p>
+        <div class="job-tags">${tags}</div>
+        <div class="job-detail-actions job-detail-actions-row">
+            <button type="button" class="btn btn-primary" onclick="event.stopPropagation(); closeModal('jobDetailModal'); showApplicationModal(${job.id})">Apply now</button>
+            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); copyJobLink(${job.id})">Copy link</button>
+        </div>
+    `;
+}
+
+function getAppOrigin() {
+    return getApiBaseUrl().replace(/\/?api\/?$/, '');
+}
+
+function goAdmin(e) {
+    if (e) e.preventDefault();
+    window.location.href = `${getAppOrigin()}/admin`;
+}
+
+function copyJobLink(jobId) {
+    try {
+        let pageBase = `${window.location.origin}${window.location.pathname}`;
+        if (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') {
+            pageBase = `${getAppOrigin()}/`;
+        }
+        const url = new URL(pageBase);
+        url.searchParams.set('job', jobId);
+        url.hash = '';
+        const text = url.toString();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => showToast('Link copied to clipboard', 'success')).catch(() => fallbackCopyText(text));
+        } else {
+            fallbackCopyText(text);
+        }
+    } catch {
+        showToast(`Share this job ID: ${jobId}`, 'info');
+    }
+}
+
+function fallbackCopyText(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        showToast('Link copied', 'success');
+    } catch {
+        showToast(text, 'info');
+    }
+    document.body.removeChild(ta);
+}
+
+function getSession() {
+    try {
+        const raw = localStorage.getItem(USER_SESSION_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+function setSession(user) {
+    localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
+}
+
+function clearSession() {
+    localStorage.removeItem(USER_SESSION_KEY);
+}
+
+function restoreSession() {
+    updateNavbarAuth();
+}
+
+function updateNavbarAuth() {
+    const user = getSession();
+    const btn = document.getElementById('navPrimaryBtn');
+    const out = document.getElementById('navLogoutBtn');
+    const label = document.getElementById('navUserLabel');
+    if (!btn) return;
+    if (user && user.email) {
+        if (label) {
+            label.style.display = 'inline';
+            label.textContent = `Hi, ${user.name || user.email}`;
+        }
+        btn.textContent = 'Admin';
+        btn.onclick = goAdmin;
+        if (out) out.style.display = 'inline-block';
+    } else {
+        if (label) label.style.display = 'none';
+        btn.textContent = 'Login';
+        btn.onclick = showLoginModal;
+        if (out) out.style.display = 'none';
+    }
+}
+
+function logoutUser() {
+    clearSession();
+    updateNavbarAuth();
+    showToast('Logged out.', 'info');
 }
 
 // Show login modal
@@ -248,17 +639,162 @@ function showLoginModal() {
 // Show signup modal
 function showSignupModal() {
     closeModal('loginModal');
-    showToast('Signup functionality coming soon!', 'info');
+    document.getElementById('signupModal').style.display = 'block';
+}
+
+function handleSignup(event) {
+    event.preventDefault();
+    const name = document.getElementById('signupName').value.trim();
+    const email = document.getElementById('signupEmail').value.trim();
+    const p1 = document.getElementById('signupPassword').value;
+    const p2 = document.getElementById('signupPassword2').value;
+    if (!validateEmail(email)) {
+        showToast('Please use a valid email', 'error');
+        return;
+    }
+    if (p1 !== p2) {
+        showToast('Passwords do not match', 'error');
+        return;
+    }
+    setSession({ email, name, at: Date.now() });
+    showToast('You are signed in.', 'success');
+    closeModal('signupModal');
+    event.target.reset();
+    updateNavbarAuth();
+}
+
+function openUtilityModal(title, html) {
+    document.getElementById('utilityModalTitle').textContent = title;
+    document.getElementById('utilityModalBody').innerHTML = html;
+    document.getElementById('utilityModal').style.display = 'block';
+}
+
+function openCareerAdvice() {
+    openUtilityModal('Career advice', `
+        <ul class="utility-list">
+            <li><strong>Tailor your resume</strong> — mirror keywords from the job description.</li>
+            <li><strong>Quantify impact</strong> — use numbers (revenue, %, users) where you can.</li>
+            <li><strong>Prepare stories</strong> — use STAR (Situation, Task, Action, Result) in interviews.</li>
+            <li><strong>Follow up</strong> — send a short thank-you note within 24 hours.</li>
+        </ul>`);
+}
+
+function openResumeBuilder() {
+    openUtilityModal('Resume builder (outline)', `
+        <p>Copy this skeleton into any editor, or download it as a text file.</p>
+        <pre class="resume-pre">YOUR NAME — TITLE
+[Email] · [Phone] · [City] · [LinkedIn]
+
+SUMMARY
+2–3 lines on your strengths and what you want next.
+
+EXPERIENCE
+Company — Role — Dates
+• Achievement with metric
+• Responsibility / tool stack
+
+EDUCATION & CERTS
+School — Degree — Year</pre>
+        <button type="button" class="btn btn-primary" onclick="downloadResumeTemplate()">Download as .txt</button>`);
+}
+
+function downloadResumeTemplate() {
+    const el = document.querySelector('.resume-pre');
+    const text = el ? el.textContent : '';
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'resume-outline.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Download started', 'success');
+}
+
+function openPricingModal() {
+    openUtilityModal('Employer pricing (demo)', `
+        <table class="data-table"><thead><tr><th>Plan</th><th>Price</th><th>Includes</th></tr></thead>
+        <tbody>
+        <tr><td>Starter</td><td>$99/mo</td><td>3 active jobs, email support</td></tr>
+        <tr><td>Growth</td><td>$249/mo</td><td>15 jobs, branded page, analytics</td></tr>
+        <tr><td>Enterprise</td><td>Custom</td><td>SSO, API, dedicated CSM</td></tr>
+        </tbody></table>
+        <p class="muted">This is illustrative only for the demo.</p>`);
+}
+
+function openResourcesModal() {
+    openUtilityModal('Resources', `
+        <ul class="utility-list">
+            <li><a href="#jobs" onclick="closeModal('utilityModal'); return true;">Browse open roles</a></li>
+            <li><a href="#" onclick="closeModal('utilityModal'); goAdmin(event); return false;">Employer admin</a></li>
+            <li><a href="#contact" onclick="closeModal('utilityModal'); return true;">Contact us</a></li>
+        </ul>`);
+}
+
+function openForgotPassword() {
+    openUtilityModal('Forgot password', `
+        <p>Email reset is not wired in this demo build.</p>
+        <p>Create a new account with <strong>Sign up</strong>, or <a href="#contact" onclick="closeModal('utilityModal')">contact us</a>.</p>`);
+}
+
+function openJobAlertsModal() {
+    document.getElementById('jobAlertsModal').style.display = 'block';
+    refreshAlertsSummary();
+}
+
+function saveJobAlert(e) {
+    e.preventDefault();
+    const email = document.getElementById('alertEmail').value.trim();
+    const raw = document.getElementById('alertKeywords').value;
+    const keywords = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (!keywords.length) {
+        showToast('Add at least one keyword', 'error');
+        return;
+    }
+    localStorage.setItem(JOB_ALERTS_KEY, JSON.stringify({ email, keywords, savedAt: Date.now() }));
+    showToast('Matching jobs are highlighted with a gold outline.', 'success');
+    closeModal('jobAlertsModal');
+    renderJobs(applyJobSort(currentJobs).slice(0, displayedJobs));
+}
+
+function refreshAlertsSummary() {
+    const el = document.getElementById('alertsSummary');
+    if (!el) return;
+    const raw = localStorage.getItem(JOB_ALERTS_KEY);
+    if (!raw) {
+        el.textContent = '';
+        return;
+    }
+    try {
+        const a = JSON.parse(raw);
+        el.textContent = `Saved: ${a.keywords.join(', ')}${a.email ? ` · ${a.email}` : ''}`;
+    } catch {
+        el.textContent = '';
+    }
+}
+
+function socialDemo(network) {
+    showToast(`${network}: placeholder — add real URLs when you go live.`, 'info');
 }
 
 // Show application modal
-function showApplicationModal(jobId) {
-    const job = jobData.find(j => j.id === jobId);
-    if (job) {
-        document.getElementById('applicationModal').style.display = 'block';
-        // Store job ID for form submission
-        document.getElementById('applicationModal').dataset.jobId = jobId;
+async function showApplicationModal(jobId) {
+    let job = currentJobs.find(j => j.id === jobId);
+    if (!job) {
+        try {
+            const r = await fetch(`${API_BASE_URL}/jobs/${jobId}`);
+            if (r.ok) job = await r.json();
+        } catch (e) {
+            console.error(e);
+        }
     }
+    if (!job) {
+        showToast('Job not found', 'error');
+        return;
+    }
+    document.getElementById('applicationModal').style.display = 'block';
+    document.getElementById('applicationModal').dataset.jobId = jobId;
+    const el = document.getElementById('applyJobTitle');
+    if (el) el.textContent = job.title;
 }
 
 // Close modal
@@ -269,24 +805,27 @@ function closeModal(modalId) {
 // Handle login form submission
 function handleLogin(event) {
     event.preventDefault();
-    
-    const email = document.getElementById('loginEmail').value;
+    const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
-    
-    // Simulate login process
-    if (email && password) {
-        showToast('Login successful! Welcome back.', 'success');
-        closeModal('loginModal');
-        
-        // Reset form
-        document.getElementById('loginEmail').value = '';
-        document.getElementById('loginPassword').value = '';
-        
-        // Update UI to show logged in state
-        updateLoginState(true);
-    } else {
+    if (!email || !password) {
         showToast('Please fill in all fields', 'error');
+        return;
     }
+    if (!validateEmail(email)) {
+        showToast('Please enter a valid email', 'error');
+        return;
+    }
+    if (password.length < 4) {
+        showToast('Password must be at least 4 characters (demo)', 'error');
+        return;
+    }
+    const name = email.split('@')[0].replace(/[._-]+/g, ' ');
+    setSession({ email, name, at: Date.now() });
+    showToast('Welcome back!', 'success');
+    closeModal('loginModal');
+    document.getElementById('loginEmail').value = '';
+    document.getElementById('loginPassword').value = '';
+    updateNavbarAuth();
 }
 
 // Handle application form submission
@@ -321,7 +860,7 @@ async function handleApplication(event) {
             
             if (response.ok) {
                 const result = await response.json();
-                showToast(`Application submitted successfully! Application ID: ${result.id}`, 'success');
+                showToast(`Application submitted successfully. Reference #${result.id}`, 'success');
                 closeModal('applicationModal');
                 
                 // Reset form
@@ -333,9 +872,12 @@ async function handleApplication(event) {
                 
                 console.log('Application submitted successfully:', result);
             } else {
-                const error = await response.json();
-                showToast(`Error: ${error.error || 'Failed to submit application'}`, 'error');
-                console.error('Application submission failed:', error);
+                let msg = 'Failed to submit application';
+                try {
+                    const error = await response.json();
+                    msg = error.error || msg;
+                } catch (_) { /* ignore */ }
+                showToast(msg, 'error');
             }
         } catch (error) {
             showToast('Network error. Please try again.', 'error');
@@ -347,7 +889,7 @@ async function handleApplication(event) {
 }
 
 // Handle contact form submission
-function handleContactSubmit(event) {
+async function handleContactSubmit(event) {
     event.preventDefault();
     
     const name = document.getElementById('contactName').value;
@@ -355,32 +897,30 @@ function handleContactSubmit(event) {
     const message = document.getElementById('contactMessage').value;
     
     if (name && email && message) {
-        showToast('Message sent successfully! We\'ll get back to you soon.', 'success');
-        
-        // Reset form
-        document.getElementById('contactName').value = '';
-        document.getElementById('contactEmail').value = '';
-        document.getElementById('contactMessage').value = '';
-        
-        // In a real application, this would send data to a server
-        console.log('Contact form submitted:', { name, email, message });
+        try {
+            const response = await fetch(`${API_BASE_URL}/contact`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, message }),
+            });
+            if (response.ok) {
+                showToast('Message sent successfully. We will get back to you soon.', 'success');
+                document.getElementById('contactName').value = '';
+                document.getElementById('contactEmail').value = '';
+                document.getElementById('contactMessage').value = '';
+            } else {
+                let msg = 'Could not send message';
+                try {
+                    const err = await response.json();
+                    msg = err.error || msg;
+                } catch (_) { /* ignore */ }
+                showToast(msg, 'error');
+            }
+        } catch (e) {
+            showToast('Network error. Is the backend running on port 5001?', 'error');
+        }
     } else {
         showToast('Please fill in all fields', 'error');
-    }
-}
-
-// Update login state in UI
-function updateLoginState(isLoggedIn) {
-    const loginBtn = document.querySelector('.navbar .btn-primary');
-    
-    if (isLoggedIn) {
-        loginBtn.textContent = 'Dashboard';
-        loginBtn.onclick = function() {
-            showToast('Dashboard feature coming soon!', 'info');
-        };
-    } else {
-        loginBtn.textContent = 'Login';
-        loginBtn.onclick = showLoginModal;
     }
 }
 
@@ -429,13 +969,8 @@ window.onclick = function(event) {
 // Add scroll effect to header
 window.addEventListener('scroll', function() {
     const header = document.querySelector('.header');
-    if (window.scrollY > 100) {
-        header.style.background = 'rgba(255, 255, 255, 0.95)';
-        header.style.backdropFilter = 'blur(10px)';
-    } else {
-        header.style.background = '#fff';
-        header.style.backdropFilter = 'none';
-    }
+    if (!header) return;
+    header.classList.toggle('header-scrolled', window.scrollY > 24);
 });
 
 // Add animation on scroll
@@ -505,11 +1040,11 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('change', function() {
             const file = this.files[0];
             if (file) {
-                const maxSize = 5 * 1024 * 1024; // 5MB
+                const maxSize = 15 * 1024 * 1024; // under server 16MB limit
                 const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
                 
                 if (file.size > maxSize) {
-                    showToast('File size must be less than 5MB', 'error');
+                    showToast('File size must be less than 15MB', 'error');
                     this.value = '';
                 } else if (!allowedTypes.includes(file.type)) {
                     showToast('Please upload a PDF or DOC file', 'error');

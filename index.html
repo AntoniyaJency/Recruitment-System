@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recruitment System - Find Your Dream Job</title>
+    <title>RecruitHub — Find your next role</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body>
+<body class="site">
     <!-- Header -->
-    <header class="header">
-        <nav class="navbar">
+    <header class="header" id="siteHeader">
+        <nav class="navbar" aria-label="Primary">
             <div class="nav-container">
-                <div class="nav-logo">
-                    <i class="fas fa-briefcase"></i>
-                    <span>RecruitHub</span>
-                </div>
+                <a href="#home" class="nav-logo">
+                    <span class="nav-logo-mark" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+                    <span class="nav-logo-text">RecruitHub</span>
+                </a>
                 <ul class="nav-menu">
                     <li class="nav-item">
                         <a href="#home" class="nav-link">Home</a>
@@ -24,13 +27,18 @@
                         <a href="#jobs" class="nav-link">Jobs</a>
                     </li>
                     <li class="nav-item">
+                        <a href="#saved-jobs" class="nav-link" onclick="scrollToSaved(event)">Saved</a>
+                    </li>
+                    <li class="nav-item">
                         <a href="#about" class="nav-link">About</a>
                     </li>
                     <li class="nav-item">
                         <a href="#contact" class="nav-link">Contact</a>
                     </li>
-                    <li class="nav-item">
-                        <button class="btn btn-primary" onclick="showLoginModal()">Login</button>
+                    <li class="nav-item nav-user-slot">
+                        <span id="navUserLabel" class="nav-user-label muted" style="display:none;"></span>
+                        <button type="button" id="navPrimaryBtn" class="btn btn-primary" onclick="showLoginModal()">Login</button>
+                        <button type="button" id="navLogoutBtn" class="btn btn-secondary" style="display:none;" onclick="logoutUser()">Log out</button>
                     </li>
                 </ul>
                 <div class="hamburger">
@@ -44,9 +52,11 @@
 
     <!-- Hero Section -->
     <section id="home" class="hero">
+        <div class="hero-bg" aria-hidden="true"></div>
         <div class="hero-content">
-            <h1>Find Your Dream Job</h1>
-            <p>Connect with top companies and take your career to the next level</p>
+            <p class="hero-eyebrow">Careers · Talent · Growth</p>
+            <h1>Hire and get hired with confidence</h1>
+            <p class="hero-subtitle">Search curated roles, save what matters, and apply in minutes—backed by a clear, modern hiring workflow.</p>
             <div class="search-container">
                 <div class="search-box">
                     <div class="search-input-group">
@@ -64,8 +74,18 @@
     <!-- Job Listings Section -->
     <section id="jobs" class="jobs-section">
         <div class="container">
-            <h2 class="section-title">Featured Jobs</h2>
-            <div class="filter-container">
+            <div class="section-head">
+                <p class="section-eyebrow">Open positions</p>
+                <h2 class="section-title">Featured jobs</h2>
+                <p class="section-lead muted">Filter by category and work style. Results update as you type.</p>
+            </div>
+            <p id="jobResultsMeta" class="job-results-meta muted" aria-live="polite"></p>
+            <div class="filter-container filter-container-extended">
+                <select id="sortJobs" onchange="onSortChange()" title="Sort jobs">
+                    <option value="newest">Sort: Newest first</option>
+                    <option value="title">Sort: Title (A–Z)</option>
+                    <option value="company">Sort: Company (A–Z)</option>
+                </select>
                 <select id="categoryFilter" onchange="filterJobs()">
                     <option value="">All Categories</option>
                     <option value="technology">Technology</option>
@@ -81,6 +101,7 @@
                     <option value="remote">Remote</option>
                     <option value="contract">Contract</option>
                 </select>
+                <button type="button" class="btn btn-secondary btn-compact" onclick="clearJobFilters()">Clear filters</button>
             </div>
             <div class="job-grid" id="jobGrid">
                 <!-- Jobs will be dynamically loaded here -->
@@ -88,29 +109,37 @@
             <div class="load-more-container">
                 <button class="btn btn-secondary" onclick="loadMoreJobs()">Load More Jobs</button>
             </div>
+            <div id="saved-jobs" class="saved-jobs-block">
+                <h3 class="subsection-title">Saved jobs</h3>
+                <p id="savedJobsHint" class="muted">Save jobs with the heart icon to review them here.</p>
+                <div id="savedJobsList" class="saved-jobs-list"></div>
+            </div>
         </div>
     </section>
 
     <!-- About Section -->
     <section id="about" class="about-section">
         <div class="container">
-            <h2 class="section-title">About RecruitHub</h2>
+            <div class="section-head section-head-left">
+                <p class="section-eyebrow">Why RecruitHub</p>
+                <h2 class="section-title">Built for clarity from first search to offer</h2>
+            </div>
             <div class="about-content">
                 <div class="about-text">
                     <h3>Connecting Talent with Opportunity</h3>
                     <p>RecruitHub is a modern recruitment platform designed to bridge the gap between talented professionals and leading companies. We leverage cutting-edge technology to make the job search process efficient, transparent, and rewarding.</p>
                     <div class="stats">
                         <div class="stat">
-                            <h4>10,000+</h4>
-                            <p>Active Jobs</p>
+                            <h4 id="statPublicJobs">—</h4>
+                            <p>Active Listings</p>
                         </div>
                         <div class="stat">
-                            <h4>5,000+</h4>
-                            <p>Companies</p>
+                            <h4 id="statPublicCompanies">—</h4>
+                            <p>Company Profiles</p>
                         </div>
                         <div class="stat">
-                            <h4>50,000+</h4>
-                            <p>Job Seekers</p>
+                            <h4 id="statPublicApps">—</h4>
+                            <p>Applications Received</p>
                         </div>
                     </div>
                 </div>
@@ -124,7 +153,10 @@
     <!-- Contact Section -->
     <section id="contact" class="contact-section">
         <div class="container">
-            <h2 class="section-title">Get in Touch</h2>
+            <div class="section-head">
+                <p class="section-eyebrow">Contact</p>
+                <h2 class="section-title">Get in touch</h2>
+            </div>
             <div class="contact-content">
                 <div class="contact-info">
                     <h3>Contact Information</h3>
@@ -165,10 +197,10 @@
                     <h4>RecruitHub</h4>
                     <p>Your trusted partner in finding the perfect career opportunity.</p>
                     <div class="social-links">
-                        <a href="#"><i class="fab fa-facebook"></i></a>
-                        <a href="#"><i class="fab fa-twitter"></i></a>
-                        <a href="#"><i class="fab fa-linkedin"></i></a>
-                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#" onclick="socialDemo('Facebook'); return false;" aria-label="Facebook"><i class="fab fa-facebook"></i></a>
+                        <a href="#" onclick="socialDemo('Twitter'); return false;" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+                        <a href="#" onclick="socialDemo('LinkedIn'); return false;" aria-label="LinkedIn"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" onclick="socialDemo('Instagram'); return false;" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
                     </div>
                 </div>
                 <div class="footer-section">
@@ -183,24 +215,24 @@
                 <div class="footer-section">
                     <h4>For Job Seekers</h4>
                     <ul>
-                        <li><a href="#">Browse Jobs</a></li>
-                        <li><a href="#">Career Advice</a></li>
-                        <li><a href="#">Resume Builder</a></li>
-                        <li><a href="#">Job Alerts</a></li>
+                        <li><a href="#jobs">Browse Jobs</a></li>
+                        <li><a href="#" onclick="openCareerAdvice(); return false;">Career Advice</a></li>
+                        <li><a href="#" onclick="openResumeBuilder(); return false;">Resume Builder</a></li>
+                        <li><a href="#" onclick="openJobAlertsModal(); return false;">Job Alerts</a></li>
                     </ul>
                 </div>
                 <div class="footer-section">
                     <h4>For Employers</h4>
                     <ul>
-                        <li><a href="#">Post a Job</a></li>
-                        <li><a href="#">Browse Candidates</a></li>
-                        <li><a href="#">Pricing</a></li>
-                        <li><a href="#">Resources</a></li>
+                        <li><a href="#" onclick="goAdmin(event); return false;">Post a Job</a></li>
+                        <li><a href="#" onclick="goAdmin(event); return false;">Browse Candidates</a></li>
+                        <li><a href="#" onclick="openPricingModal(); return false;">Pricing</a></li>
+                        <li><a href="#" onclick="openResourcesModal(); return false;">Resources</a></li>
                     </ul>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2024 RecruitHub. All rights reserved.</p>
+                <p>&copy; <span id="footerYear"></span> RecruitHub. All rights reserved.</p>
             </div>
         </div>
     </footer>
@@ -219,15 +251,79 @@
                 </div>
                 <div class="form-options">
                     <label class="checkbox">
-                        <input type="checkbox"> Remember me
+                        <input type="checkbox" id="loginRemember"> Remember me
                     </label>
-                    <a href="#" class="forgot-password">Forgot Password?</a>
+                    <a href="#" class="forgot-password" onclick="openForgotPassword(); return false;">Forgot Password?</a>
                 </div>
                 <button type="submit" class="btn btn-primary full-width">Login</button>
                 <div class="signup-link">
-                    <p>Don't have an account? <a href="#" onclick="showSignupModal()">Sign up</a></p>
+                    <p>Don't have an account? <a href="#" onclick="showSignupModal(); return false;">Sign up</a></p>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Sign up modal -->
+    <div id="signupModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('signupModal')">&times;</span>
+            <h2>Create an account</h2>
+            <p class="muted">Demo accounts are stored in this browser only.</p>
+            <form onsubmit="handleSignup(event)">
+                <div class="form-group">
+                    <input type="text" id="signupName" placeholder="Full name" required>
+                </div>
+                <div class="form-group">
+                    <input type="email" id="signupEmail" placeholder="Email" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="signupPassword" placeholder="Password (min 6 characters)" minlength="6" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="signupPassword2" placeholder="Confirm password" minlength="6" required>
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Create account</button>
+                <p class="signup-link"><a href="#" onclick="closeModal('signupModal'); showLoginModal(); return false;">Already have an account? Log in</a></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Job alerts -->
+    <div id="jobAlertsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('jobAlertsModal')">&times;</span>
+            <h2>Job alerts</h2>
+            <p class="muted">We will highlight matching roles on your next visit (saved in this browser).</p>
+            <form onsubmit="saveJobAlert(event)">
+                <div class="form-group">
+                    <label for="alertEmail">Email (optional)</label>
+                    <input type="email" id="alertEmail" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="alertKeywords">Keywords (comma-separated)</label>
+                    <input type="text" id="alertKeywords" placeholder="e.g. React, remote, marketing" required>
+                </div>
+                <button type="submit" class="btn btn-primary full-width">Save alert preferences</button>
+            </form>
+            <div id="alertsSummary" class="alerts-summary muted"></div>
+        </div>
+    </div>
+
+    <!-- Utility content (career tips, pricing, etc.) -->
+    <div id="utilityModal" class="modal">
+        <div class="modal-content modal-wide">
+            <span class="close" onclick="closeModal('utilityModal')">&times;</span>
+            <h2 id="utilityModalTitle">RecruitHub</h2>
+            <div id="utilityModalBody" class="utility-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Job detail modal -->
+    <div id="jobDetailModal" class="modal">
+        <div class="modal-content modal-wide">
+            <span class="close" onclick="closeModal('jobDetailModal')">&times;</span>
+            <h2 id="jobDetailTitle">Job details</h2>
+            <div id="jobDetailBody" class="job-detail-body"></div>
         </div>
     </div>
 
@@ -236,6 +332,7 @@
         <div class="modal-content">
             <span class="close" onclick="closeModal('applicationModal')">&times;</span>
             <h2>Apply for Position</h2>
+            <p id="applyJobTitle" class="apply-job-title muted"></p>
             <form onsubmit="handleApplication(event)">
                 <div class="form-group">
                     <input type="text" id="applicantName" placeholder="Full Name" required>

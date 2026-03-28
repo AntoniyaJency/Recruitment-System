@@ -1,11 +1,14 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 from datetime import datetime
+from sqlalchemy import func
 import os
 import time
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=BASE_DIR, static_url_path='')
 CORS(app, origins=['http://localhost:8000', 'http://127.0.0.1:8000'], supports_credentials=True)
 
 # Database Configuration
@@ -14,7 +17,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 
 # File Upload Configuration
-app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Ensure upload folder exists
@@ -66,6 +69,7 @@ class Application(db.Model):
     cover_letter = db.Column(db.Text, nullable=False)
     resume_filename = db.Column(db.String(500), nullable=False)
     status = db.Column(db.String(20), default='pending')  # pending, reviewed, accepted, rejected
+    admin_notes = db.Column(db.Text)
     applied_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -81,6 +85,7 @@ class Application(db.Model):
             'cover_letter': self.cover_letter,
             'resume_filename': self.resume_filename,
             'status': self.status,
+            'admin_notes': self.admin_notes,
             'applied_at': self.applied_at.isoformat() if self.applied_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -109,14 +114,30 @@ class Company(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+class ContactMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'email': self.email,
+            'message': self.message,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
 # Routes
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return send_from_directory(BASE_DIR, 'index.html')
 
 @app.route('/admin')
 def admin():
-    return render_template('admin.html')
+    return send_from_directory(BASE_DIR, 'admin.html')
 
 # API Routes for Jobs
 @app.route('/api/jobs', methods=['GET'])
@@ -128,8 +149,9 @@ def get_jobs():
         job_type = request.args.get('type')
         search = request.args.get('search')
         location = request.args.get('location')
+        show_all = request.args.get('all', '').lower() in ('1', 'true', 'yes')
         
-        query = Job.query.filter_by(status='active')
+        query = Job.query if show_all else Job.query.filter_by(status='active')
         
         if category:
             query = query.filter_by(category=category)
@@ -168,6 +190,29 @@ def get_job(job_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/jobs/meta', methods=['GET'])
+def jobs_meta():
+    """Distinct categories and job types for active jobs (dynamic filters)."""
+    try:
+        cats = (
+            db.session.query(Job.category)
+            .filter_by(status='active')
+            .distinct()
+            .all()
+        )
+        types = (
+            db.session.query(Job.job_type)
+            .filter_by(status='active')
+            .distinct()
+            .all()
+        )
+        return jsonify({
+            'categories': sorted({c[0] for c in cats if c and c[0]}),
+            'job_types': sorted({t[0] for t in types if t and t[0]}),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/jobs', methods=['POST'])
 def create_job():
     try:
@@ -181,7 +226,8 @@ def create_job():
             category=data['category'],
             salary=data['salary'],
             description=data['description'],
-            tags=','.join(data.get('tags', []))
+            tags=','.join(data.get('tags', [])),
+            status=data.get('status', 'active'),
         )
         
         db.session.add(job)
@@ -256,6 +302,14 @@ def get_applications():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+ALLOWED_RESUME_EXT = {'.pdf', '.doc', '.docx'}
+
+def _resume_extension_ok(filename):
+    if not filename:
+        return False
+    lower = filename.lower()
+    return any(lower.endswith(ext) for ext in ALLOWED_RESUME_EXT)
+
 @app.route('/api/applications', methods=['POST'])
 def create_application():
     try:
@@ -266,14 +320,25 @@ def create_application():
             if not resume:
                 return jsonify({'error': 'Resume file is required'}), 400
             
-            # Save resume file
-            filename = f"{int(time.time())}_{resume.filename}"
+            raw_name = secure_filename(resume.filename or '')
+            if not raw_name or not _resume_extension_ok(raw_name):
+                return jsonify({'error': 'Resume must be a PDF or Word document'}), 400
+
+            job_id_val = int(request.form.get('job_id'))
+            email_norm = (request.form.get('applicant_email') or '').strip()
+            if Application.query.filter(
+                Application.job_id == job_id_val,
+                func.lower(Application.applicant_email) == email_norm.lower(),
+            ).first():
+                return jsonify({'error': 'You have already applied for this position with this email.'}), 409
+
+            filename = f"{int(time.time())}_{raw_name}"
             resume_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             resume.save(resume_path)
             
             # Get form data
             application = Application(
-                job_id=int(request.form.get('job_id')),
+                job_id=job_id_val,
                 applicant_name=request.form.get('applicant_name'),
                 applicant_email=request.form.get('applicant_email'),
                 applicant_phone=request.form.get('applicant_phone'),
@@ -283,6 +348,12 @@ def create_application():
         else:
             # Handle JSON data (for testing)
             data = request.get_json()
+            email_norm = (data['applicant_email'] or '').strip()
+            if Application.query.filter(
+                Application.job_id == data['job_id'],
+                func.lower(Application.applicant_email) == email_norm.lower(),
+            ).first():
+                return jsonify({'error': 'You have already applied for this position with this email.'}), 409
             application = Application(
                 job_id=data['job_id'],
                 applicant_name=data['applicant_name'],
@@ -300,6 +371,26 @@ def create_application():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/applications/<int:app_id>/resume', methods=['GET'])
+def download_application_resume(app_id):
+    try:
+        application = Application.query.get_or_404(app_id)
+        if not application.resume_filename:
+            return jsonify({'error': 'No resume on file'}), 404
+        safe_name = os.path.basename(application.resume_filename)
+        folder = os.path.realpath(app.config['UPLOAD_FOLDER'])
+        file_path = os.path.realpath(os.path.join(folder, safe_name))
+        if not file_path.startswith(folder) or not os.path.isfile(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        return send_from_directory(
+            app.config['UPLOAD_FOLDER'],
+            safe_name,
+            as_attachment=True,
+            download_name=safe_name,
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/applications/<int:app_id>', methods=['PUT'])
 def update_application_status(app_id):
     try:
@@ -307,6 +398,8 @@ def update_application_status(app_id):
         data = request.get_json()
         
         application.status = data.get('status', application.status)
+        if 'admin_notes' in data:
+            application.admin_notes = data['admin_notes']
         db.session.commit()
         
         return jsonify(application.to_dict())
@@ -357,6 +450,77 @@ def create_company():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/companies/<int:company_id>', methods=['GET'])
+def get_company(company_id):
+    try:
+        company = Company.query.get_or_404(company_id)
+        return jsonify(company.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/companies/<int:company_id>', methods=['PUT'])
+def update_company(company_id):
+    try:
+        company = Company.query.get_or_404(company_id)
+        data = request.get_json()
+        company.name = data.get('name', company.name)
+        company.description = data.get('description', company.description)
+        company.website = data.get('website', company.website)
+        company.location = data.get('location', company.location)
+        company.industry = data.get('industry', company.industry)
+        company.size = data.get('size', company.size)
+        company.logo_url = data.get('logo_url', company.logo_url)
+        db.session.commit()
+        return jsonify(company.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/companies/<int:company_id>', methods=['DELETE'])
+def delete_company(company_id):
+    try:
+        company = Company.query.get_or_404(company_id)
+        db.session.delete(company)
+        db.session.commit()
+        return jsonify({'message': 'Company deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/contact', methods=['POST'])
+def submit_contact():
+    try:
+        data = request.get_json()
+        if not data or not data.get('email') or not data.get('message'):
+            return jsonify({'error': 'Email and message are required'}), 400
+        msg = ContactMessage(
+            name=data.get('name', 'Anonymous'),
+            email=data['email'].strip(),
+            message=data['message'].strip(),
+        )
+        db.session.add(msg)
+        db.session.commit()
+        return jsonify({'message': 'Thank you. We will get back to you soon.', 'id': msg.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/contact-messages', methods=['GET'])
+def list_contact_messages():
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        q = ContactMessage.query.order_by(ContactMessage.created_at.desc())
+        rows = q.paginate(page=page, per_page=per_page, error_out=False)
+        return jsonify({
+            'messages': [m.to_dict() for m in rows.items],
+            'total': rows.total,
+            'pages': rows.pages,
+            'current_page': page,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Dashboard Statistics
 @app.route('/api/dashboard/stats', methods=['GET'])
 def get_dashboard_stats():
@@ -365,9 +529,21 @@ def get_dashboard_stats():
         total_applications = Application.query.count()
         pending_applications = Application.query.filter_by(status='pending').count()
         active_companies = Company.query.count()
+        unique_candidates = db.session.query(
+            func.count(func.distinct(Application.applicant_email))
+        ).scalar() or 0
         
         recent_applications = Application.query.order_by(
             Application.applied_at.desc()
+        ).limit(5).all()
+
+        status_counts = dict(
+            db.session.query(Application.status, func.count(Application.id))
+            .group_by(Application.status)
+            .all()
+        )
+        recent_messages = ContactMessage.query.order_by(
+            ContactMessage.created_at.desc()
         ).limit(5).all()
         
         return jsonify({
@@ -375,7 +551,11 @@ def get_dashboard_stats():
             'total_applications': total_applications,
             'pending_applications': pending_applications,
             'active_companies': active_companies,
-            'recent_applications': [app.to_dict() for app in recent_applications]
+            'unique_candidates': unique_candidates,
+            'applications_by_status': status_counts,
+            'recent_applications': [app.to_dict() for app in recent_applications],
+            'recent_contact_messages': [m.to_dict() for m in recent_messages],
+            'total_contact_messages': ContactMessage.query.count(),
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
